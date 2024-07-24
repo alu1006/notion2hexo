@@ -4,10 +4,10 @@ from markdownify import markdownify as md
 import requests
 from datetime import datetime
 
-# 初始化 Notion 客戶端
-notion = Client(auth="你的API Key")
+# Initialize Notion client
+notion = Client(auth="API KEY")
 
-# 獲取數據庫中的條目
+# Fetch database items
 def fetch_database_items(database_id, filter_status):
     response = notion.databases.query(
         **{
@@ -22,7 +22,7 @@ def fetch_database_items(database_id, filter_status):
     )
     return response.get('results', [])
 
-# 獲取頁面內容
+# Fetch page content
 def fetch_page_content(page_id):
     blocks = []
     cursor = None
@@ -34,27 +34,35 @@ def fetch_page_content(page_id):
             break
     return blocks
 
-# 下載圖片並返回相對路徑
-def download_image(url, image_name, post_dir):
+# Download image and return relative path
+def download_image(url, image_name, image_dir):
     response = requests.get(url)
-    image_path = os.path.join(post_dir, image_name)
+    image_path = os.path.join(image_dir, image_name)
     os.makedirs(os.path.dirname(image_path), exist_ok=True)
     with open(image_path, 'wb') as file:
         file.write(response.content)
-    return f"{post_dir}/{image_name}"
+    return image_path
 
-# 將頁面內容轉換為 Markdown
-def convert_to_markdown(title, date, tags, categories, index_img, blocks, post_dir):
-    # 添加元數據
-    markdown = f"---\ntitle: {title}\ndate: {date}\ntags: {tags}\ncategories: {categories}\nindex_img: {index_img}\n---\n\n"
+# Convert page content to Markdown
+def convert_to_markdown(title, date, tags, categories, index_img_path, blocks, post_dir):
+    # Add metadata
+    markdown = f"---\ntitle: {title}\ndate: {date}\ntags: [{tags}]\ncategories: {categories}\nindex_img: {index_img_path}\nbanner_img: {index_img_path}\n---\n\n"
     for block in blocks:
         block_type = block["type"]
         if block_type == "paragraph":
             if block[block_type]["rich_text"]:
-                markdown += md(block[block_type]["rich_text"][0]["text"]["content"]) + "\n\n"
+                for text in block[block_type]["rich_text"]:
+                    if "href" in text["text"]:
+                        markdown += f"[{text['text']['content']}]({text['text']['href']})"
+                    else:
+                        markdown += md(text["text"]["content"])
+                markdown += "\n\n"
         elif block_type == "heading_2":
             if block[block_type]["rich_text"]:
                 markdown += "## " + md(block[block_type]["rich_text"][0]["text"]["content"]) + "\n\n"
+        elif block_type == "heading_3":
+            if block[block_type]["rich_text"]:
+                markdown += "### " + md(block[block_type]["rich_text"][0]["text"]["content"]) + "\n\n"
         elif block_type == "bulleted_list_item":
             if block[block_type]["rich_text"]:
                 markdown += "- " + md(block[block_type]["rich_text"][0]["text"]["content"]) + "\n\n"
@@ -67,16 +75,16 @@ def convert_to_markdown(title, date, tags, categories, index_img, blocks, post_d
                 continue
             image_name = block["id"] + ".jpg"
             image_path = download_image(image_url, image_name, post_dir)
-            markdown += f"![Image]({image_name})\n\n"
-        # 可以根據需要添加更多塊類型的處理
+            markdown += f"![Image]({os.path.basename(image_path)})\n\n"
+        # Add more block type handling as needed
     return markdown
 
-# 保存為 Markdown 文件
+# Save as Markdown file
 def save_markdown_file(file_name, content):
     with open(f'./source/_posts/{file_name}.md', 'w', encoding='utf-8') as file:
         file.write(content)
 
-# 更新 Notion 頁面狀態
+# Update Notion page status
 def update_page_status(page_id, new_status):
     notion.pages.update(
         page_id=page_id,
@@ -89,33 +97,46 @@ def update_page_status(page_id, new_status):
         }
     )
 
-# 主函數
+# Main function
 def main():
-    database_id = "你的數據庫ID"
+    database_id = "Database ID"
     filter_status = "待發佈"
     new_status = "已發佈"
     items = fetch_database_items(database_id, filter_status)
     
     for item in items:
         page_id = item["id"]
-        # 提取標題、日期、標籤、分類和索引圖片
+        # Extract title, date, tags, categories, and index image
         title = item["properties"]["title"]["title"][0]["text"]["content"]
         date = item["properties"]["date"]["date"]["start"] if item["properties"]["date"]["date"] else datetime.now().isoformat()
         tags = ', '.join(tag["name"] for tag in item["properties"]["tags"]["multi_select"]) if item["properties"]["tags"]["multi_select"] else "null"
         categories = ', '.join(cat["name"] for cat in item["properties"]["categories"]["multi_select"]) if item["properties"]["categories"]["multi_select"] else "null"
-        index_img = item["properties"]["index_img"]["files"][0]["name"] if item["properties"]["index_img"]["files"] else "null"
+        index_img_url = item["properties"]["index_img"]["files"][0]["file"]["url"] if item["properties"]["index_img"]["files"] else None
         
-        # 創建用於存放圖片的目錄
+        # Directory for index image
+        index_img_dir = "./themes/fluid/source/img"
+        os.makedirs(index_img_dir, exist_ok=True)
+        
+        # Download index image
+        index_img_path = None
+        if index_img_url:
+            index_img_name = f"{title.replace(' ', '_')}_index.jpg"
+            index_img_path = download_image(index_img_url, index_img_name, index_img_dir)
+            index_img_path = f"/img/{index_img_name}"  # Path used in the markdown metadata
+
+        # Directory for other post images
         post_dir = f"./source/_posts/{title.replace(' ', '_')}"
-        
+        os.makedirs(post_dir, exist_ok=True)
+
         blocks = fetch_page_content(page_id)
-        markdown_content = convert_to_markdown(title, date, tags, categories, index_img, blocks, post_dir)
+        markdown_content = convert_to_markdown(title, date, tags, categories, index_img_path, blocks, post_dir)
         save_markdown_file(title, markdown_content)
         print(f"Saved: {title}")
         
-        # 更新狀態為 "已發佈"
+        # Update status to "已發佈"
         update_page_status(page_id, new_status)
         print(f"Updated status for {title} to {new_status}")
 
 if __name__ == "__main__":
     main()
+

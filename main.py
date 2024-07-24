@@ -42,6 +42,18 @@ def download_image(url, image_name, image_dir):
     with open(image_path, 'wb') as file:
         file.write(response.content)
     return image_path
+    
+# Extract rich text with possible links
+def extract_rich_text_with_links(rich_texts):
+    text = ""
+    for rich_text in rich_texts:
+        if "href" in rich_text["text"]:
+            link_text = rich_text["text"]["content"]
+            link_url = rich_text["text"]["href"]
+            text += f"[{link_text}]({link_url})"
+        else:
+            text += md(rich_text["text"]["content"])
+    return text
 
 # Convert page content to Markdown
 def convert_to_markdown(title, date, tags, categories, index_img_path, blocks, post_dir):
@@ -49,23 +61,21 @@ def convert_to_markdown(title, date, tags, categories, index_img_path, blocks, p
     markdown = f"---\ntitle: {title}\ndate: {date}\ntags: [{tags}]\ncategories: {categories}\nindex_img: {index_img_path}\nbanner_img: {index_img_path}\n---\n\n"
     for block in blocks:
         block_type = block["type"]
-        if block_type == "paragraph":
+        if block_type in ["paragraph", "heading_1", "heading_2", "heading_3", "bulleted_list_item", "numbered_list_item"]:
             if block[block_type]["rich_text"]:
-                for text in block[block_type]["rich_text"]:
-                    if "href" in text["text"]:
-                        markdown += f"[{text['text']['content']}]({text['text']['href']})"
-                    else:
-                        markdown += md(text["text"]["content"])
-                markdown += "\n\n"
-        elif block_type == "heading_2":
-            if block[block_type]["rich_text"]:
-                markdown += "## " + md(block[block_type]["rich_text"][0]["text"]["content"]) + "\n\n"
-        elif block_type == "heading_3":
-            if block[block_type]["rich_text"]:
-                markdown += "### " + md(block[block_type]["rich_text"][0]["text"]["content"]) + "\n\n"
-        elif block_type == "bulleted_list_item":
-            if block[block_type]["rich_text"]:
-                markdown += "- " + md(block[block_type]["rich_text"][0]["text"]["content"]) + "\n\n"
+                text_content = extract_rich_text_with_links(block[block_type]["rich_text"])
+                if block_type == "heading_1":
+                    markdown += f"# {text_content}\n\n"
+                elif block_type == "heading_2":
+                    markdown += f"## {text_content}\n\n"
+                elif block_type == "heading_3":
+                    markdown += f"### {text_content}\n\n"
+                elif block_type == "bulleted_list_item":
+                    markdown += f"- {text_content}\n\n"
+                elif block_type == "numbered_list_item":
+                    markdown += f"1. {text_content}\n\n"
+                else:
+                    markdown += f"{text_content}\n\n"
         elif block_type == "image":
             if "external" in block[block_type]:
                 image_url = block[block_type]["external"]["url"]
@@ -76,6 +86,10 @@ def convert_to_markdown(title, date, tags, categories, index_img_path, blocks, p
             image_name = block["id"] + ".jpg"
             image_path = download_image(image_url, image_name, post_dir)
             markdown += f"![Image]({os.path.basename(image_path)})\n\n"
+        elif block_type == "embed":
+            if "url" in block[block_type]:
+                embed_url = block[block_type]["url"]
+                markdown += f"[Embedded Content]({embed_url})\n\n"
         # Add more block type handling as needed
     return markdown
 

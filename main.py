@@ -43,27 +43,30 @@ def download_image(url, image_name, image_dir):
         file.write(response.content)
     return image_path
     
-# Extract rich text with possible links
-def extract_rich_text_with_links(rich_texts):
+# Extract rich text with possible links and code
+def extract_rich_text_with_links_and_code(rich_texts):
     text = ""
     for rich_text in rich_texts:
+        content = rich_text["text"]["content"]
         if "href" in rich_text["text"]:
             link_text = rich_text["text"]["content"]
             link_url = rich_text["text"]["href"]
             text += f"[{link_text}]({link_url})"
+        elif rich_text.get("annotations", {}).get("code", False):
+            text += f"`{content}`"
         else:
-            text += md(rich_text["text"]["content"])
+            text += content
     return text
 
 # Convert page content to Markdown
-def convert_to_markdown(title, date, tags, categories, index_img_path, blocks, post_dir):
+def convert_to_markdown(title, date, tags, categories, index_img_path, blocks, post_dir, url_name):
     # Add metadata
-    markdown = f"---\ntitle: {title}\ndate: {date}\ntags: [{tags}]\ncategories: {categories}\nindex_img: {index_img_path}\nbanner_img: {index_img_path}\n---\n\n"
+    markdown = f"---\ntitle: {title}\ndate: {date}\ntags: [{tags}]\ncategories: {categories}\nindex_img: {index_img_path}\nbanner_img: {index_img_path}\nabbrlink: {url_name}\n---\n\n"
     for block in blocks:
         block_type = block["type"]
         if block_type in ["paragraph", "heading_1", "heading_2", "heading_3", "bulleted_list_item", "numbered_list_item"]:
             if block[block_type]["rich_text"]:
-                text_content = extract_rich_text_with_links(block[block_type]["rich_text"])
+                text_content = extract_rich_text_with_links_and_code(block[block_type]["rich_text"])
                 if block_type == "heading_1":
                     markdown += f"# {text_content}\n\n"
                 elif block_type == "heading_2":
@@ -76,6 +79,11 @@ def convert_to_markdown(title, date, tags, categories, index_img_path, blocks, p
                     markdown += f"1. {text_content}\n\n"
                 else:
                     markdown += f"{text_content}\n\n"
+        elif block_type == "code":
+            code_content = ""
+            for rt in block[block_type]["rich_text"]:
+                code_content += rt["text"]["content"]
+            markdown += f"```\n{code_content}\n```\n\n"
         elif block_type == "image":
             if "external" in block[block_type]:
                 image_url = block[block_type]["external"]["url"]

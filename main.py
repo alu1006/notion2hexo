@@ -98,19 +98,38 @@ def generate_seo_url_name(title, tags):
 
 
 # Extract rich text with possible links and code
+# Extract rich text with possible links and code
 def extract_rich_text_with_links_and_code(rich_texts):
     text = ""
     for rich_text in rich_texts:
-        content = rich_text["text"]["content"]
-        if "href" in rich_text["text"]:
-            link_text = rich_text["text"]["content"]
-            link_url = rich_text["text"]["href"]
-            text += f"[{link_text}]({link_url})"
-        elif rich_text.get("annotations", {}).get("code", False):
-            text += f"`{content}`"
-        else:
-            text += content
+        if rich_text["type"] == "text":
+            content_data = rich_text.get("text", {})
+            content = content_data.get("content", "")
+            
+            link_data = content_data.get("link", None)
+            if link_data and isinstance(link_data, dict):
+                link_url = link_data.get("url")
+                if link_url:
+                    text += f"[{content}]({link_url})"
+                else:
+                    text += content
+            elif rich_text.get("annotations", {}).get("code", False):
+                text += f"`{content}`"
+            else:
+                text += content
+        elif rich_text["type"] == "mention":
+            mention = rich_text["mention"]
+            if mention["type"] == "page":
+                page_id = mention["page"]["id"]
+                text += f"[Mention: {page_id}]"
+            elif mention["type"] == "user":
+                user_name = mention["user"].get("name", "Unknown User")
+                text += f"@{user_name}"
+        elif rich_text["type"] == "equation":
+            equation = rich_text["equation"]["expression"]
+            text += f"${equation}$"
     return text
+
 
 
 # Convert page content to Markdown

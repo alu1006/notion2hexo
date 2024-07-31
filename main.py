@@ -150,9 +150,11 @@ def extract_rich_text_with_links_and_code(rich_texts):
 
 # Convert page content to Markdown
 def convert_to_markdown(title, date, tags, categories, index_img_path, blocks, post_dir, url_name,is_child):
+    post_dir, url_name,is_child):
     markdown=''
     if not is_child:
         markdown = f"---\ntitle: {title}\ndate: {date}\ntags: [{tags}]\ncategories: {categories}\nindex_img: {index_img_path}\nbanner_img: {index_img_path}\nabbrlink: {url_name}\n---\n\n"
+    indent = '\t' if is_child else ''
     for block in blocks:
         block_type = block["type"]
         if block_type in ["paragraph", "heading_1", "heading_2", "heading_3", "bulleted_list_item", "numbered_list_item"]:
@@ -165,9 +167,9 @@ def convert_to_markdown(title, date, tags, categories, index_img_path, blocks, p
                 elif block_type == "heading_3":
                     markdown += f"### {text_content}\n\n"
                 elif block_type == "bulleted_list_item":
-                    markdown += f"- {text_content}\n\n"
+                    markdown += f"{indent}- {text_content}\n\n"
                 elif block_type == "numbered_list_item":
-                    markdown += f"1. {text_content}\n\n"
+                    markdown += f"{indent}1. {text_content}\n\n"
                 else:
                     markdown += f"{text_content}\n\n"
         elif block_type == "code":

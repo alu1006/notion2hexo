@@ -39,6 +39,11 @@ def fetch_page_content(page_id):
         cursor = response.get('next_cursor')
         if not cursor:
             break
+    # Check for child blocks in each block and fetch them
+    for block in blocks:
+        if block["has_children"]:
+            child_blocks = fetch_page_content(block["id"])
+            block["children"] = child_blocks
     return blocks
 
 
@@ -84,20 +89,31 @@ def download_image_as_webp(url, image_name, image_dir):
 
 # Generate SEO-friendly URL name using OpenAI
 def generate_seo_url_name(title, tags):
-    prompt = f"Generate a SEO-friendly URL name for a blog post with the title '{title}' and tags '{tags}':"
-    response = openai.ChatCompletion.create(
+    # Translate title and tags to English
+    translation_prompt = f"Translate the following Chinese text to English: Title: '{title}', Tags: '{tags}'"
+    translation_response = openai.ChatCompletion.create(
+        model="gpt-3.5-turbo",
+        messages=[
+            {"role": "system", "content": "You are a translation assistant."},
+            {"role": "user", "content": translation_prompt}
+        ]
+    )
+    translation = translation_response['choices'][0]['message']['content'].strip()
+
+    # Generate SEO-friendly URL name
+    seo_prompt = f"Generate a SEO-friendly URL name based on the English translation: {translation}"
+    seo_response = openai.ChatCompletion.create(
         model="gpt-3.5-turbo",
         messages=[
             {"role": "system", "content": "You are an assistant that generates SEO-friendly URL slugs."},
-            {"role": "user", "content": prompt}
+            {"role": "user", "content": seo_prompt}
         ]
     )
-    slug = response['choices'][0]['message']['content'].strip()
+    slug = seo_response['choices'][0]['message']['content'].strip()
     slug = slug.replace(" ", "-").lower()
     return slug
 
 
-# Extract rich text with possible links and code
 # Extract rich text with possible links and code
 def extract_rich_text_with_links_and_code(rich_texts):
     text = ""
@@ -133,8 +149,10 @@ def extract_rich_text_with_links_and_code(rich_texts):
 
 
 # Convert page content to Markdown
-def convert_to_markdown(title, date, tags, categories, index_img_path, blocks, post_dir, url_name):
-    markdown = f"---\ntitle: {title}\ndate: {date}\ntags: [{tags}]\ncategories: {categories}\nindex_img: {index_img_path}\nbanner_img: {index_img_path}\nabbrlink: {url_name}\n---\n\n"
+def convert_to_markdown(title, date, tags, categories, index_img_path, blocks, post_dir, url_name,is_child):
+    markdown=''
+    if not is_child:
+        markdown = f"---\ntitle: {title}\ndate: {date}\ntags: [{tags}]\ncategories: {categories}\nindex_img: {index_img_path}\nbanner_img: {index_img_path}\nabbrlink: {url_name}\n---\n\n"
     for block in blocks:
         block_type = block["type"]
         if block_type in ["paragraph", "heading_1", "heading_2", "heading_3", "bulleted_list_item", "numbered_list_item"]:
@@ -172,6 +190,10 @@ def convert_to_markdown(title, date, tags, categories, index_img_path, blocks, p
             if "url" in block[block_type]:
                 embed_url = block[block_type]["url"]
                 markdown += f"[Embedded Content]({embed_url})\n\n"
+        # Process child blocks if they exist
+        if block.get("children"):
+            child_markdown = convert_to_markdown(title, date, tags, categories, index_img_path, block["children"], post_dir, url_name,1)
+            markdown += child_markdown
     return markdown
 
 
